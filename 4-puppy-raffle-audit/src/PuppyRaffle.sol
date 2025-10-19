@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.7.6;
 
+// @audit-info is 0.7.6 is upto date with openzeppelin?
+
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
@@ -18,7 +20,8 @@ import {Base64} from "lib/base64/base64.sol";
 contract PuppyRaffle is ERC721, Ownable {
     using Address for address payable;
 
-    uint256 public immutable entranceFee;
+    uint256 public immutable entranceFee; 
+    //@audit-info shouldnt be the immutable variable all caps?
 
     address[] public players;
     uint256 public raffleDuration;
@@ -78,7 +81,7 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @param newPlayers the list of players to enter the raffle
     function enterRaffle(address[] memory newPlayers) public payable {
         require(msg.value == entranceFee * newPlayers.length, "PuppyRaffle: Must send enough to enter raffle");
-        for (uint256 i = 0; i < newPlayers.length; i++) {
+        for (uint256 i = 0; i < newPlayers.length; i++) { //@audit possible gas issue with large arrays 
             players.push(newPlayers[i]);
         }
 
@@ -93,6 +96,7 @@ contract PuppyRaffle is ERC721, Ownable {
 
     /// @param playerIndex the index of the player to refund. You can find it externally by calling `getActivePlayerIndex`
     /// @dev This function will allow there to be blank spots in the array
+    //@audit-info Doesnt follow CEI pattern
     function refund(uint256 playerIndex) public {
         address playerAddress = players[playerIndex];
         require(playerAddress == msg.sender, "PuppyRaffle: Only the player can refund");
@@ -100,7 +104,8 @@ contract PuppyRaffle is ERC721, Ownable {
 
         payable(msg.sender).sendValue(entranceFee);
 
-        players[playerIndex] = address(0);
+        players[playerIndex] = address(0); 
+        //@audit possible Reentrancy issue here since we send value before updating state
         emit RaffleRefunded(playerAddress);
     }
 
@@ -122,6 +127,7 @@ contract PuppyRaffle is ERC721, Ownable {
     /// @dev we use a hash of on-chain data to generate the random numbers
     /// @dev we reset the active players array after the winner is selected
     /// @dev we send 80% of the funds to the winner, the other 20% goes to the feeAddress
+    //@audit Randomness could be manipulated by miners follow openzeppelin's VRF implementation
     function selectWinner() external {
         require(block.timestamp >= raffleStartTime + raffleDuration, "PuppyRaffle: Raffle not over");
         require(players.length >= 4, "PuppyRaffle: Need at least 4 players");
@@ -132,6 +138,7 @@ contract PuppyRaffle is ERC721, Ownable {
         uint256 prizePool = (totalAmountCollected * 80) / 100;
         uint256 fee = (totalAmountCollected * 20) / 100;
         totalFees = totalFees + uint64(fee);
+        //@audit possible overflow if totalFees exceeds uint64 max value
 
         uint256 tokenId = totalSupply();
 
